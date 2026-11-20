@@ -20,9 +20,12 @@ def create_app(overrides=None):
         app.config.update(overrides)
 
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-    conn = connect(app.config["DATABASE"])
-    init_schema(conn)           # creates tables if they do not exist yet
-    conn.close()
+    try:
+        conn = connect(app.config["DATABASE"])
+        init_schema(conn)           # creates tables if they do not exist yet
+        conn.close()
+    except Exception as exc:
+        app.logger.warning("Database startup check warning: %s", exc)
     app.teardown_appcontext(close_db)
 
     from routes import admin, auth, menu, orders

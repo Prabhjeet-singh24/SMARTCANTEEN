@@ -39,11 +39,13 @@ def sanitize_db_url(raw_url):
     if raw_url.startswith("postgres://"):
         raw_url = "postgresql://" + raw_url[len("postgres://"):]
 
-    m = re.match(r"^(postgresql://[^:]+:)(?:\[(.*?)\]|([^@]+))@(.*)$", raw_url)
+    m = re.match(r"^(postgresql://[^:]+:)(.*)@([^@]+)$", raw_url)
     if m:
         prefix = m.group(1)
-        pwd = m.group(2) if m.group(2) is not None else m.group(3)
-        rest = m.group(4)
+        pwd = m.group(2)
+        rest = m.group(3)
+        if pwd.startswith("[") and pwd.endswith("]"):
+            pwd = pwd[1:-1]
         encoded_pwd = quote_plus(unquote(pwd))
         raw_url = f"{prefix}{encoded_pwd}@{rest}"
 
@@ -154,25 +156,17 @@ def _connect_postgres(url):
     clean_url = sanitize_db_url(url)
     parsed = urlparse(clean_url)
 
-    # Attempt connection with provided URL
-    try:
-        raw_conn = psycopg2.connect(clean_url, connect_timeout=5)
-        return PgConnectionWrapper(raw_conn)
-    except Exception as err:
-        # Check for Supabase direct IPv6 address failure -> fallback to IPv4 connection pooler
-        m = re.match(r"^db\.([a-z0-9]+)\.supabase\.co$", parsed.hostname or "")
-        if m:
-            ref = m.group(1)
-            pooler_host = "aws-0-ap-south-1.pooler.supabase.com"
-            user = parsed.username or "postgres"
-            if not user.endswith(f".{ref}"):
-                user = f"{user}.{ref}"
+    # If pooler host is used but username is missing the .<ref> suffix, automatically fix it
+    if parsed.hostname and "pooler.supabase.com" in parsed.hostname:
+        user = parsed.username or "postgres"
+        if "." not in user:
+            ref = "wuwpglwvjqrhcdkrzrto"
+            user = f"{user}.{ref}"
             pwd = unquote(parsed.password or "")
             port = parsed.port or 5432
             dbname = parsed.path.lstrip("/") or "postgres"
-
             raw_conn = psycopg2.connect(
-                host=pooler_host,
+                host=parsed.hostname,
                 port=port,
                 user=user,
                 password=pwd,
@@ -181,7 +175,33 @@ def _connect_postgres(url):
                 connect_timeout=10,
             )
             return PgConnectionWrapper(raw_conn)
-        raise
+
+    # Attempt connection with provided URL
+    try:
+        raw_conn = psycopg2.connect(clean_url, connect_timeout=6)
+        return PgConnectionWrapper(raw_conn)
+    except Exception as err:
+        # Check for Supabase direct IPv6 address failure -> fallback to IPv4 connection pooler
+        m = re.match(r"^db\.([a-z0-9]+)\.supabase\.co$", parsed.hostname or "")
+        ref = m.group(1) if m else "wuwpglwvjqrhcdkrzrto"
+        pooler_host = "aws-0-ap-south-1.pooler.supabase.com"
+        user = parsed.username or "postgres"
+        if not user.endswith(f".{ref}"):
+            user = f"{user}.{ref}"
+        pwd = unquote(parsed.password or "")
+        port = parsed.port or 5432
+        dbname = parsed.path.lstrip("/") or "postgres"
+
+        raw_conn = psycopg2.connect(
+            host=pooler_host,
+            port=port,
+            user=user,
+            password=pwd,
+            dbname=dbname,
+            sslmode="require",
+            connect_timeout=10,
+        )
+        return PgConnectionWrapper(raw_conn)
 
 
 def connect(target):

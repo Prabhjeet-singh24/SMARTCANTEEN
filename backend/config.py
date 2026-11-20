@@ -72,7 +72,7 @@ def _get_secret_key():
 class Config:
     SECRET_KEY = _get_secret_key()
     DEBUG = _env_bool("FLASK_DEBUG", False)
-    HOST = os.environ.get("HOST") or ("0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1")
+    HOST = os.environ.get("HOST", "0.0.0.0")
     PORT = _env_int("PORT", 5000)
 
     DATABASE = os.environ.get("DATABASE_PATH") or os.environ.get("DATABASE_URL") or str(ROOT_DIR / "database" / "canteen.db")
