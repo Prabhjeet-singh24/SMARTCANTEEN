@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: smart-canteen
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SERVE_FRONTEND
+        value: "true"
+      - key: PYTHON_VERSION
+        value: 3.11.9
